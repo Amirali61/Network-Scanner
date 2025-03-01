@@ -9,6 +9,8 @@ from colorama import Fore, Style, init
 import platform
 import subprocess
 import sys
+import time
+import random
 init(autoreset=True)
 
 
@@ -83,6 +85,7 @@ def check_port(ip,port,open_ports):
     sock.close()
     if result == 0:
         open_ports[ip].append(port)
+    time.sleep(random.uniform(0.5, 2))  
 
 
 def scan_ip_range(ports_to_check,**kwargs):
@@ -92,7 +95,10 @@ def scan_ip_range(ports_to_check,**kwargs):
     start = ipaddress.IPv4Address(start_ip)
     end = ipaddress.IPv4Address(end_ip)
 
-    open_ports = {str(ipaddress.IPv4Address(ip_num)): [] for ip_num in range(int(start), int(end) + 1)}
+    ip_list = [str(ipaddress.IPv4Address(ip_num)) for ip_num in range(int(start), int(end) + 1)]
+    random.shuffle(ip_list)  
+
+    open_ports = {ip: [] for ip in ip_list}
 
     max_threads = 400
     threads = []
@@ -131,6 +137,7 @@ start_ip = input("Enter start IP (default 192.168.50.0): ") or '192.168.50.0'
 end_ip =input("Enter end IP (default 192.168.50.255): ") or '192.168.50.255'
 
 ports_to_check =[21,22,23,25,53,56,67,80,110,123,143,443,445,993,995,3306,3389,8080]
+random.shuffle(ports_to_check)
 open_ports = scan_ip_range(ports_to_check,start_ip=start_ip,end_ip=end_ip)
 ports_defenition = {21:"ftp",22:"ssh",23:"telnet",25:"smtp",53:"DNS",56:"VoIP",67:"DHCP",80:"HTTP",110:"POP3",123:"NTP",143:"IMAP",443:"HTTPS",445:"SMB",993:"IMAPS",995:"POP3S",3306:"MySQL",3389:"RDP",8080:"HTTP Alternative"}
 
