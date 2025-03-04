@@ -49,7 +49,12 @@ def os_fingerprint(ip):
             elif ttl<100 and df_flag==0: # type: ignore
                 print(f"{Fore.BLUE}Possible OS:{Style.RESET_ALL} Linux")
             else:
-                print(f"{Fore.BLUE}OS could not be determined{Style.RESET_ALL}")
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(1)
+                    if s.connect_ex((ip, 3389)) == 0:
+                        print(f"{Fore.BLUE}Possible OS:{Style.RESET_ALL} Windows")
+                    else:
+                        print(f"{Fore.BLUE}OS could not be determined{Style.RESET_ALL}")
 
 def grab_ilo_banner(ip):
     ilo_ports = [22, 23, 80, 443, 17988, 17990, 623]
@@ -109,7 +114,7 @@ def scan_ip_range(ports_to_check,**kwargs):
 
     open_ports = {ip: [] for ip in ip_list}
 
-    max_threads = 400
+    max_threads = 800
     threads = []
     with ThreadPoolExecutor(max_workers=max_threads) as executor:
         for ip_num in range(int(start),int(end)+1):
@@ -147,9 +152,57 @@ def grab_http_banner(ip, port):
         with socket.create_connection((ip, port), timeout=2) as s:
             s.sendall(b"HEAD / HTTP/1.1\r\nHost: example.com\r\n\r\n")
             banner = s.recv(1024).decode()
-            return banner.strip()
+            banner_list = banner.split("\n")
+            return_list = []
+            for item in banner_list:
+                if ("HTTP" in item) or ("Server" in item):
+                    return_list.append(item)
+            return "\n".join(return_list)
     except:
         return ""
+
+
+def get_smb_version(ip, port=445): # still incomplete
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(3)
+        s.connect((ip, port))
+
+        smb_negotiate = bytes.fromhex("000000850ff3ff03000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
+
+        s.send(smb_negotiate)
+        response = s.recv(1024)
+
+        if b"SMB 2.???" in response:
+            return "SMBv2 or SMBv3"
+        elif b"\xffSMB" in response:
+            return "SMBv1"
+        else:
+            return "Unknown Version"
+    
+    except socket.timeout:
+        return ""
+    
+    except Exception as e:
+        return ""
+    
+    finally:
+        s.close()
+
+
+def get_host_name(ip):
+    try:
+        cmd = f"nbtstat -A {ip}"
+        output = subprocess.check_output(cmd, shell=True, text=True, encoding="utf-8")
+
+        match = re.search(r"(\S+)\s+<00>\s+UNIQUE", output)
+        if match:
+            return match.group(1)
+        else:
+            return "Host Name Not Found"
+    except subprocess.CalledProcessError:
+        return "Error: Could not retrieve Host Name"
+    
 
 start_ip = input("Enter start IP (default 192.168.50.0): ") or '192.168.50.0'
 end_ip =input("Enter end IP (default 192.168.50.255): ") or '192.168.50.255'
@@ -168,6 +221,7 @@ for ip, ports in open_ports.items():
             print(f"{Fore.GREEN}✔ IP {ip} responds to ping!")
         else:
             print(f"{Fore.RED}✖ IP {ip} doesnt respond to ping.")
+        # print(f"{Fore.YELLOW}Hostname: {Fore.WHITE}{get_host_name(ip)}{Style.RESET_ALL}") uncomment if you want
         print(f"{Fore.YELLOW}IP {ip} {Fore.GREEN}has open ports:")
         print(f"{Fore.CYAN}=============================={Style.RESET_ALL}")
         
@@ -183,6 +237,9 @@ for ip, ports in open_ports.items():
             elif port==80:
                 banner = grab_http_banner(ip,80)
                 print(f"{Fore.MAGENTA}{port} ({ports_defenition[port]}) => {Fore.WHITE}{banner}{Style.RESET_ALL}")
+            # elif port==445:
+            #     banner = get_smb_version(ip)
+            #     print(f"{Fore.MAGENTA}{port} ({ports_defenition[port]}) => {Fore.WHITE}{banner}{Style.RESET_ALL}")            
 
             else:
                 print(f"{Fore.MAGENTA}{port} ({ports_defenition[port]}){Style.RESET_ALL}")
