@@ -45,34 +45,29 @@ cd network-scanner
 python3 network_scanner.py
 ```
 
-3. You will be prompted to enter the **start and end IP addresses**. The script will then begin scanning ports and gathering information from devices within the network.
+3. You will be prompted to enter the **Ip's you want to scan in any form [192.168.1.0/24,192.168.1.0-255,192.168.1.20]**. The script will then begin scanning ports and gathering information from devices within the network.
 
 ### Example
 
 Input:
 
 ```
-Enter start IP (default 192.168.50.0): 192.168.50.1
-Enter end IP (default 192.168.50.255): 192.168.50.100
+Please enter ip's you want to scan[192.168.1.0/24,192.168.1.0-255,192.168.1.20]=> 192.168.1.0/24
+Please enter ip's you want to scan[192.168.1.0/24,192.168.1.0-255,192.168.1.20]=> 192.168.1.0-255
 ```
 
 Output:
 
 ```
-==============================
-✔ IP 192.168.50.1 responds to ping!
-IP 192.168.50.1 has open ports:
-==============================
-Port 22 (ssh) => OpenSSH 7.6p1 Ubuntu
-Port 80 (http) => HTTP/1.1 200 OK
-------------------------------
-OS fingerprinting result =>
-TTL: 128
-Possible OS: Windows
-------------------------------
-Target's MAC address: 00:1a:2b:3c:4d:5e
-Vendor: Cisco Systems
-==============================
++---------------+-------------------+-----------------+-------------+-------------+--------------------+
+| IP            | MAC Address       | Vendor          | OS          | Ports       |   Open ports count |
++===============+===================+=================+=============+=============+====================+
+| 192.168.1.21 | 3c:a8:2a:18:ed:a4 | Hewlett Packard | HP ILO      | 80, 443, 22 |                  3 |
++---------------+-------------------+-----------------+-------------+-------------+--------------------+
+| 192.168.1.10 | 3c:a8:2a:0a:5a:a9 | Hewlett Packard | Vmware ESXI | 80, 443     |                  2 |
++---------------+-------------------+-----------------+-------------+-------------+--------------------+
+| 192.168.1.22 | 00:0c:29:f9:67:9e | VMware, Inc.    | Windows     | 445, 3389   |                  2 |
++---------------+-------------------+-----------------+-------------+-------------+--------------------+
 ```
 
 ## Supported Protocols
