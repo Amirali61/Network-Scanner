@@ -37,6 +37,7 @@ pip install scapy colorama
 ```bash
 git clone https://github.com/yourusername/network-scanner.git
 cd network-scanner
+pip install -r requirements.txt
 ```
 
 2. Run the script:
