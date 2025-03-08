@@ -10,8 +10,13 @@ import platform
 import subprocess
 import sys
 import time
+from tabulate import tabulate
 import random
+import logging
 init(autoreset=True)
+
+conf.log_suppress = True
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 
 
 def search_vendor(mac_address):
@@ -31,30 +36,32 @@ def os_fingerprint(ip):
     if response:
         #print("Response received from", ip)
         #print("IP:", response[IP].src)
-        print(f"{Fore.BLUE}OS fingerprinting result =>{Style.RESET_ALL}")
+        # print(f"{Fore.BLUE}OS fingerprinting result =>{Style.RESET_ALL}")
         # print("TCP Flags:", response[TCP].flags) # type: ignore
         # print("Window Size:", response[TCP].window) # type: ignore
-        print(f"{Fore.RED}TTL:{Style.RESET_ALL}", response[IP].ttl) # type: ignore
+        # print(f"{Fore.RED}TTL:{Style.RESET_ALL}", response[IP].ttl) # type: ignore
         ttl = response.ttl
         df_flag = (response.flags & 2) >> 1 
         esxi = grab_esxi_banner(ip)
         ilo = grab_ilo_banner(ip)
         if esxi != "":
-            print(esxi)
+            return "Vmware ESXI"
         elif ilo != "":
-            print(ilo)
+            return "HP ILO"
         else:  
             if ttl>100 and df_flag==1: # type: ignore
-                print(f"{Fore.BLUE}Possible OS:{Style.RESET_ALL} Windows")
+                return "Windows"
             elif ttl<100 and df_flag==0: # type: ignore
-                print(f"{Fore.BLUE}Possible OS:{Style.RESET_ALL} Linux")
+                return "Linux"
             else:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     s.settimeout(1)
                     if s.connect_ex((ip, 3389)) == 0:
-                        print(f"{Fore.BLUE}Possible OS:{Style.RESET_ALL} Windows")
+                        return "Windows"
                     else:
-                        print(f"{Fore.BLUE}OS could not be determined{Style.RESET_ALL}")
+                        return "Unknown"
+    else:
+        return "Unknown"
 
 def grab_ilo_banner(ip):
     ilo_ports = [22, 23, 80, 443, 17988, 17990, 623]
@@ -102,16 +109,27 @@ def check_port(ip,port,open_ports):
     time.sleep(random.uniform(0.5, 2))  
 
 
-def scan_ip_range(ports_to_check,**kwargs):
-    start_ip = kwargs.get('start_ip','192.168.1.0')
-    end_ip = kwargs.get('end_ip','192.168.1.255')
+def scan_ip_range(ports_to_check):
+    ip_input = input("Please enter ip's you want to scan[192.168.1.0/24,192.168.1.0-255,192.168.1.20]=> ")
+    start_ip, end_ip = parse_ip_range(ip_input)
+    excluded = input("Do you eant to exclude any ip's? seperate them with space[x.x.x.x y.y.y.y]=> ")
+    excluded_ips= excluded.split(" ")
+
+
+
 
     start = ipaddress.IPv4Address(start_ip)
     end = ipaddress.IPv4Address(end_ip)
 
     ip_list = [str(ipaddress.IPv4Address(ip_num)) for ip_num in range(int(start), int(end) + 1)]
+    for ip in excluded_ips:
+        if ip in ip_list:
+            ip_list.remove(ip)
+    print(f"scanning ips from {ip_list[0]} to {ip_list[len(ip_list)-1]}")
+    print(f"excluded ips are {excluded_ips}")
     random.shuffle(ip_list)  
 
+    
     open_ports = {ip: [] for ip in ip_list}
 
     max_threads = 800
@@ -123,6 +141,9 @@ def scan_ip_range(ports_to_check,**kwargs):
             for port in ports_to_check:
                 executor.submit(check_port,ip,port,open_ports)
                 #print(f"Scanning IP {ip}:{port}")
+    for ip in list(open_ports.keys()):
+        if not open_ports[ip]: 
+            del open_ports[ip]
 
     return open_ports
 
@@ -204,51 +225,93 @@ def get_host_name(ip):
         return "Error: Could not retrieve Host Name"
     
 
-start_ip = input("Enter start IP (default 192.168.50.0): ") or '192.168.50.0'
-end_ip =input("Enter end IP (default 192.168.50.255): ") or '192.168.50.255'
+def parse_ip_range(ip_input):
+    if "/" in ip_input:
+        try:
+            network = ipaddress.ip_network(ip_input, strict=False)
+            return str(network[0]), str(network[-1])
+        except:
+            print("Wrong CIDR Format!")
+    
+    match = re.match(r"(\d+\.\d+\.\d+)\.(\d+)-(\d+)", ip_input)
+    if match:
+        base_ip, start, end = match.groups()
+        start_ip = f"{base_ip}.{start}"
+        end_ip = f"{base_ip}.{end}"
+        return start_ip, end_ip
+    
+    try:
+        ipaddress.ip_address(ip_input)
+        return ip_input, ip_input
+    except:
+        print("Wrong IP address")
 
-ports_to_check =[21,22,23,25,53,56,67,80,110,123,143,443,445,993,995,3306,3389,8080]
-random.shuffle(ports_to_check)
-open_ports = scan_ip_range(ports_to_check,start_ip=start_ip,end_ip=end_ip)
-ports_defenition = {21:"ftp",22:"ssh",23:"telnet",25:"smtp",53:"DNS",56:"VoIP",67:"DHCP",80:"HTTP",110:"POP3",123:"NTP",143:"IMAP",443:"HTTPS",445:"SMB",993:"IMAPS",995:"POP3S",3306:"MySQL",3389:"RDP",8080:"HTTP Alternative"}
 
 
+def print_results_nmap_style(results):
+    table_data = []
+    
+    for result in results:
+        ip = result["IP"]
+        mac_address = result["MAC"]
+        vendor = result["Vendor"]
+        os = result["OS"]
+        open_ports_count = len(result["Open Ports"])
+        open_ports_str = ", ".join(map(str, result["Open Ports"])) if open_ports_count > 0 else ""
+        # smb_version = result["SMB"]
+        # hostname = result["Hostname"]
+        
 
-for ip, ports in open_ports.items():
-    if ports:
-        print(f"\n{Fore.CYAN}==============================")
-        if is_alive(ip):
-            print(f"{Fore.GREEN}✔ IP {ip} responds to ping!")
-        else:
-            print(f"{Fore.RED}✖ IP {ip} doesnt respond to ping.")
-        # print(f"{Fore.YELLOW}Hostname: {Fore.WHITE}{get_host_name(ip)}{Style.RESET_ALL}") uncomment if you want
-        print(f"{Fore.YELLOW}IP {ip} {Fore.GREEN}has open ports:")
-        print(f"{Fore.CYAN}=============================={Style.RESET_ALL}")
+        table_data.append([ip, mac_address, vendor, os,open_ports_str, open_ports_count])
+        
+    headers = ["IP", "MAC Address", "Vendor", "OS", "Ports","Open ports count"]
+    print(tabulate(table_data, headers=headers, tablefmt="grid"))
+
+
+def collect_scan_data(open_ports):
+    results = []
+    
+    for ip, ports in open_ports.items():
+        result = {}
+        result["IP"] = ip
         
         try:
             mac_address = check_mac(ip)
         except:
             mac_address = f"{Fore.RED}Could not resolve the MAC address{Style.RESET_ALL}"
         
-        for port in ports:
-            if port ==22:
-                banner = grab_ssh_banner(ip,22)
-                print(f"{Fore.MAGENTA}{port} ({ports_defenition[port]}) => {Fore.WHITE}{banner}{Style.RESET_ALL}")
-            elif port==80:
-                banner = grab_http_banner(ip,80)
-                print(f"{Fore.MAGENTA}{port} ({ports_defenition[port]}) => {Fore.WHITE}{banner}{Style.RESET_ALL}")
-            # elif port==445:
-            #     banner = get_smb_version(ip)
-            #     print(f"{Fore.MAGENTA}{port} ({ports_defenition[port]}) => {Fore.WHITE}{banner}{Style.RESET_ALL}")            
-
-            else:
-                print(f"{Fore.MAGENTA}{port} ({ports_defenition[port]}){Style.RESET_ALL}")
+        result["MAC"] = mac_address
         
-        print(f"{Fore.CYAN}------------------------------")
-        os_fingerprint(ip)
-        print(f"{Fore.CYAN}------------------------------")
-        print(f"{Fore.BLUE}Target's MAC address: {Fore.WHITE}{mac_address}")
-        print(f"{Fore.GREEN}Vendor: {Fore.WHITE}{search_vendor(mac_address[:8].upper())}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}==============================\n")
+        vendor = search_vendor(mac_address[:8].upper())
+        result["Vendor"] = vendor
+        
+        os = os_fingerprint(ip)
+        result["OS"] = os
+        
+
+        # result["Hostname"] = get_host_name(ip)
+        
+
+        open_ports_list = list(ports)  
+        result["Open Ports"] = open_ports_list
+        
+
+        # smb_version = get_smb_version(ip)
+        # result["SMB"] = smb_version
+        
+        results.append(result)
+        print(f"IP {ip} Done.")
+    
+    return results
+
+ports_to_check =[21,22,23,25,53,56,67,80,110,123,143,443,445,993,995,3306,3389,8080]
+random.shuffle(ports_to_check)
+open_ports = scan_ip_range(ports_to_check)
+result = collect_scan_data(open_ports)
+print_results_nmap_style(result)
+ports_defenition = {21:"ftp",22:"ssh",23:"telnet",25:"smtp",53:"DNS",56:"VoIP",67:"DHCP",80:"HTTP",110:"POP3",123:"NTP",143:"IMAP",443:"HTTPS",445:"SMB",993:"IMAPS",995:"POP3S",3306:"MySQL",3389:"RDP",8080:"HTTP Alternative"}
+
+
+
 
 
