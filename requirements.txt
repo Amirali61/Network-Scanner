@@ -1,0 +1,5 @@
+scapy
+colorama
+tabulate
+ipaddress
+sqlite3
