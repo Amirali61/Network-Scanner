@@ -35,15 +35,15 @@ pip install scapy colorama
 1. First, clone or download the script:
 
 ```bash
-git clone https://github.com/yourusername/network-scanner.git
-cd network-scanner
+git clone https://github.com/Amirali61/Network-Scanner.git
+cd Network-Scanner
 pip install -r requirements.txt
 ```
 
 2. Run the script:
 
 ```bash
-python3 network_scanner.py
+python3 scanner.py
 ```
 
 3. You will be prompted to enter the **Ip's you want to scan in any form [192.168.1.0/24,192.168.1.0-255,192.168.1.20]**. The script will then begin scanning ports and gathering information from devices within the network.
